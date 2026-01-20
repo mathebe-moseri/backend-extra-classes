@@ -1,30 +1,27 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Services
 builder.Services.AddControllers();
 builder.Services.AddControllersWithViews().AddNewtonsoftJson();
-
-// Swagger (optional)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// ? Add CORS policy
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowFrontend", policy =>
-    {
-        policy.WithOrigins("https://green-sky-0218fea03.6.azurestaticapps.net") // your frontend URL
-              .AllowAnyHeader()
-              .AllowAnyMethod();
-    });
-});
+// ? Add CORS service
+builder.Services.AddCors();
 
 var app = builder.Build();
 
-// Use CORS
-app.UseCors("AllowFrontend"); // ? must match the policy name
+// Routing first
+app.UseRouting();
 
-// Swagger for development
+// ? Apply CORS (allow all for testing)
+app.UseCors(x =>
+    x.AllowAnyOrigin()
+     .AllowAnyHeader()
+     .AllowAnyMethod()
+);
+
+// Swagger in dev
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
