@@ -6,22 +6,25 @@ builder.Services.AddControllersWithViews().AddNewtonsoftJson();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// ? Add CORS service
-builder.Services.AddCors();
+// Add CORS with policy
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
 
 var app = builder.Build();
 
-// Routing first
+// Use routing
 app.UseRouting();
 
-// ? Apply CORS (allow all for testing)
-app.UseCors(x =>
-    x.AllowAnyOrigin()
-     .AllowAnyHeader()
-     .AllowAnyMethod()
-);
+// Apply CORS BEFORE authorization and mapping
+app.UseCors("AllowAll");
 
-// Swagger in dev
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -29,7 +32,5 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();
