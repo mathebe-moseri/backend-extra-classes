@@ -1,19 +1,30 @@
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddControllersWithViews().AddNewtonsoftJson();
+
+// Swagger (optional)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddControllersWithViews().AddNewtonsoftJson();
+// ? Add CORS policy
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("https://green-sky-0218fea03.6.azurestaticapps.net") // your frontend URL
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
 
 var app = builder.Build();
 
-app.UseCors(x => x.AllowAnyHeader().AllowAnyOrigin().AllowAnyMethod());
+// Use CORS
+app.UseCors("AllowFrontend"); // ? must match the policy name
 
-// Configure the HTTP request pipeline.
+// Swagger for development
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

@@ -1,0 +1,19 @@
+# Build folders
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+
+# Visual Studio temporary files
+*.vs/
+
+# Rider IDE
+.idea/
+
+# Visual Studio Code settings (optional)
+.vscode/
+
+# Others
+*.log
