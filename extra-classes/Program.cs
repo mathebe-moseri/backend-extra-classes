@@ -1,30 +1,21 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// Services
+// Add services to the container.
 builder.Services.AddControllers();
-builder.Services.AddControllersWithViews().AddNewtonsoftJson();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-
-// Add CORS with policy
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll", policy =>
-    {
-        policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod();
-    });
-});
+builder.Services.AddControllersWithViews().AddNewtonsoftJson();
 
 var app = builder.Build();
 
-// Use routing
-app.UseRouting();
+// CORS must be before MapControllers
+app.UseCors(x => x
+    .WithOrigins("https://green-sky-0218fea03.6.azurestaticapps.net")
+    .AllowAnyHeader()
+    .AllowAnyMethod()
+);
 
-// Apply CORS BEFORE authorization and mapping
-app.UseCors("AllowAll");
-
+// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -32,5 +23,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseAuthorization();
+
 app.MapControllers();
+
 app.Run();
