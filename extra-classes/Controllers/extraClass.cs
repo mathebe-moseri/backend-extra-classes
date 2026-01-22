@@ -9,7 +9,6 @@ using SendGrid.Helpers.Mail;
 namespace extra_classes.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
     public class extraClass : ControllerBase
     {
         private readonly IConfiguration _configuration;
@@ -19,6 +18,7 @@ namespace extra_classes.Controllers
             _configuration = configuration;
         }
 
+        // ✅ OLD URL: /get_learnerInfo
         [HttpGet("get_learnerInfo")]
         public JsonResult get_learnerInfo()
         {
@@ -39,7 +39,7 @@ namespace extra_classes.Controllers
             return new JsonResult(table);
         }
 
-        // ✅ ADD LEARNER + SEND EMAIL
+        // ✅ OLD URL: /add_learnerInfo + SEND EMAIL
         [HttpPost("add_learnerInfo")]
         public async Task<IActionResult> addLearnerInfo([FromBody] ClassRegistration learner)
         {
@@ -59,25 +59,25 @@ namespace extra_classes.Controllers
                 await conn.OpenAsync();
                 using (SqlCommand cmd = new SqlCommand(query, conn))
                 {
-                    cmd.Parameters.AddWithValue("@LearnerFirstName", learner.LearnerFirstName);
-                    cmd.Parameters.AddWithValue("@LearnerSurname", learner.LearnerSurname);
-                    cmd.Parameters.AddWithValue("@Grade", learner.Grade);
-                    cmd.Parameters.AddWithValue("@Email", learner.Email);
-                    cmd.Parameters.AddWithValue("@SchoolName", learner.SchoolName);
-                    cmd.Parameters.AddWithValue("@ParentFullName", learner.ParentFullName);
-                    cmd.Parameters.AddWithValue("@ParentCell", learner.ParentCell);
+                    cmd.Parameters.AddWithValue("@LearnerFirstName", learner.LearnerFirstName ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@LearnerSurname", learner.LearnerSurname ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@Grade", learner.Grade ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@Email", learner.Email ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@SchoolName", learner.SchoolName ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@ParentFullName", learner.ParentFullName ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@ParentCell", learner.ParentCell ?? string.Empty);
 
                     await cmd.ExecuteNonQueryAsync();
                 }
             }
 
-            // ✉️ SEND WELCOME EMAIL
+            // ✉️ SEND EMAIL
             await SendWelcomeEmail(learner);
 
-            return Ok(new { message = "Registration successful. Email sent." });
+            return Ok(new { message = "Learner added successfully. Email sent." });
         }
 
-        // 📩 EMAIL METHOD
+        // 📩 SendGrid email
         private async Task SendWelcomeEmail(ClassRegistration learner)
         {
             var apiKey = _configuration["SendGridApiKey"];
@@ -98,17 +98,14 @@ Welcome to Sesi Mathebe Extra Classes!
 Please click the link below to join our next session:
 {joinUrl}
 
-We look forward to learning with you.
-";
+We look forward to learning with you.";
 
             var html = $@"
 <h2>Welcome to Sesi Mathebe Extra Classes 🎓</h2>
 <p>Hi <strong>{learner.LearnerFirstName}</strong>,</p>
 <p>Thank you for joining <strong>Sesi Mathebe Extra Classes</strong>.</p>
 <p>
-  👉 <a href='{joinUrl}' target='_blank'>
-     Click here to join our next session
-  </a>
+  👉 <a href='{joinUrl}' target='_blank'>Click here to join our next session</a>
 </p>
 <p>We look forward to learning with you!</p>
 <br/>
