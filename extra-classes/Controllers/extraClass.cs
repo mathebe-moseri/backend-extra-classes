@@ -165,5 +165,48 @@ namespace extra_classes.Controllers
             public string Email { get; set; }
             public string Message { get; set; }
         }
+
+
+
+
+
+
+
+
+
+
+
+        [HttpPost("send_contact_whatsapp")]
+        public async Task<JsonResult> SendWhatsappNotification([FromBody] WhatsappContact contact)
+        {
+            if (contact == null || string.IsNullOrEmpty(contact.WhatsappNumber))
+                return new JsonResult(new { success = false });
+
+            string body =
+                $"A user clicked SEND VIA WHATSAPP\n\n" +
+                $"WhatsApp Number: {contact.WhatsappNumber}\n\n" +
+                $"Message:\n{contact.Message}";
+
+            await SendEmailViaMailgun("whatsapp@contact.com", body);
+
+            return new JsonResult(new { success = true });
+        }
+
+        public class WhatsappContact
+        {
+            public string WhatsappNumber { get; set; }
+            public string Message { get; set; }
+        }
     }
+
+
+
+
+
+
 }
+
+
+
+
+
