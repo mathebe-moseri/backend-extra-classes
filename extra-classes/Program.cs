@@ -6,12 +6,14 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddControllersWithViews().AddNewtonsoftJson();
 
-// ? Register CORS policy
+// Register CORS policy (must be before builder.Build())
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("https://green-sky-0218fea03.6.azurestaticapps.net") // your frontend URL
+        policy.WithOrigins(
+                "https://green-sky-0218fea03.6.azurestaticapps.net", // deployed frontend
+                "http://localhost:4200")                              // local Angular
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -19,8 +21,8 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// ? Use CORS before MapControllers
-app.UseCors(); // Uses the default policy
+// Use CORS before MapControllers
+app.UseCors();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
