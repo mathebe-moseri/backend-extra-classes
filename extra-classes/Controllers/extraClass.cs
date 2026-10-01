@@ -335,7 +335,7 @@ namespace extra_classes.Controllers
         // ---------------- Email helpers (Gmail SMTP) ----------------
         private string OwnerAddress()
         {
-            return _configuration["Gmail:Address"] ?? "mathebemoseri@gmail.com";
+            return _configuration["Gmail:Address"] ?? "sesimathebe.remote.extraclasses@gmail.com";
         }
 
         private async Task<bool> SendWelcomeEmail(string toEmail, string firstName)
