@@ -341,22 +341,29 @@ namespace extra_classes.Controllers
         private async Task<bool> SendWelcomeEmail(string toEmail, string firstName)
         {
             string ownerEmail = OwnerAddress();
+            string contractPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Documents", "learner_contract.pdf");
 
             string emailText = $"Dear {firstName},\n\n" +
                                $"Welcome to Sesi Mathebe Remote Extra Classes! Thank you for registering. We are thrilled to have you join our community of learners.\n\n" +
+                               $"Please find the enrolment contract attached to this email. Kindly have the parent/guardian print, complete and sign it.\n\n" +
                                $"To complete your registration, please reply to this email and attach the following 3 documents:\n\n" +
                                $"1. Proof of payment\n" +
                                $"2. Your latest school report card\n" +
-                               $"3. The signed contract\n\n" +
+                               $"3. The signed contract (attached to this email)\n\n" +
                                $"Please note: you will only be allowed to log in and access your classes once your payment has been verified, " +
-                               $"your signed contract has been received, and your report card has been shared with us.\n\n" +
+                               $"your signed contract has been received and your report card has been shared with us.\n\n" +
                                $"We will let you know as soon as everything has been checked and your access is activated.\n\n" +
                                $"If you have any questions or need assistance, feel free to reply to this email or contact us at {ownerEmail}.\n\n" +
                                $"We look forward to supporting your learning journey.\n\n" +
                                $"Best regards,\n" +
                                $"The Sesi Mathebe Team";
 
-            return await SendEmail(toEmail, "Welcome to Sesi Mathebe - Documents Required to Complete Your Registration", emailText);
+            return await SendEmail(
+                toEmail,
+                "Welcome to Sesi Mathebe - Documents Required to Complete Your Registration",
+                emailText,
+                null,
+                contractPath);
         }
 
         private async Task<bool> SendContactToOwner(string userEmail, string messageBody)
@@ -365,7 +372,7 @@ namespace extra_classes.Controllers
             return await SendEmail(OwnerAddress(), "New Contact Form Message", body, userEmail);
         }
 
-        private async Task<bool> SendEmail(string to, string subject, string body, string replyTo = null)
+        private async Task<bool> SendEmail(string to, string subject, string body, string replyTo = null, string attachmentPath = null)
         {
             try
             {
@@ -392,7 +399,17 @@ namespace extra_classes.Controllers
                 if (!string.IsNullOrWhiteSpace(replyTo) && MailboxAddress.TryParse(replyTo, out var replyToMailbox))
                     message.ReplyTo.Add(replyToMailbox);
 
-                message.Body = new TextPart("plain") { Text = body };
+                var builder = new BodyBuilder { TextBody = body };
+
+                if (!string.IsNullOrEmpty(attachmentPath))
+                {
+                    if (System.IO.File.Exists(attachmentPath))
+                        builder.Attachments.Add(attachmentPath);
+                    else
+                        Console.WriteLine($"Email warning: attachment not found at '{attachmentPath}'.");
+                }
+
+                message.Body = builder.ToMessageBody();
 
                 using var smtp = new SmtpClient();
                 await smtp.ConnectAsync("smtp.gmail.com", 587, SecureSocketOptions.StartTls);
