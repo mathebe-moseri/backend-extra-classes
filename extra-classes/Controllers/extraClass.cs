@@ -97,7 +97,7 @@ namespace extra_classes.Controllers
             {
                 success = sent,
                 message = sent
-                    ? "Your message has been sent successfully!"
+                    ? "Your message has been sent successfully! We'll get back to you shortly."
                     : "Sorry, your message could not be sent. Please try again later."
             });
         }
