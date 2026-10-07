@@ -151,7 +151,7 @@ namespace extra_classes.Controllers
 
             return await SendEmail(
                 toEmail,
-                "Welcome to Sesi Mathebe - Documents Required to Complete Your Registration",
+                "Welcome to Sesi Mathebe Remote Extra Classes - Documents Required to Complete Your Registration",
                 emailText,
                 null,
                 contractPath);
