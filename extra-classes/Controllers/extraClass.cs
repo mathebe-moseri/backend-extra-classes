@@ -147,7 +147,7 @@ namespace extra_classes.Controllers
                                $"If you have any questions or need assistance, feel free to reply to this email or contact us at sesimathebe.remote.extraclasses@gmail.com.\n\n" +
                                $"We look forward to supporting your learning journey.\n\n" +
                                $"Best regards,\n" +
-                               $"The Sesi Mathebe Team";
+                               $"The SM Remote Extra Classes Team";
 
             return await SendEmail(
                 toEmail,
