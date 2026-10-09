@@ -48,6 +48,15 @@ namespace extra_classes.Controllers
             if (learner == null)
                 return new JsonResult(new { success = false, message = "Learner data is null" });
 
+            // Registrations are closed until 1 January 2027
+            if (_configuration["Registrations:Open"] != "true")
+                return new JsonResult(new
+                {
+                    success = false,
+                    closed = true,
+                    message = "Registrations are closed for now and will open again on 1 January 2027."
+                });
+
             string query = @"
                 INSERT INTO ClassRegistrations
                 (LearnerFirstName, LearnerSurname, Grade, Email, SchoolName, ParentFullName, ParentCell)
