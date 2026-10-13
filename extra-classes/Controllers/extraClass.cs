@@ -22,10 +22,16 @@ namespace extra_classes.Controllers
 
         // ---------------- GET endpoint to fetch all learners ----------------
         [HttpGet("get_learnerInfo")]
-        public JsonResult get_learnerInfo()
+        public IActionResult get_learnerInfo([FromHeader(Name = "X-Admin-Key")] string? adminKey)
         {
 
-            string query = "SELECT * FROM ClassRegistrations";
+            if (adminKey != _configuration["Admin:Key"])
+                return Unauthorized();
+            
+            string query = @"SELECT Id, LearnerFirstName, LearnerSurname, Grade, Email, SchoolName,
+                             ParentFullName, ParentCell, CreatedAt, PaymentVerified,
+                             ContractReceived, ReportCardReceived, AccessActivated
+                             FROM ClassRegistrations";
             DataTable table = new DataTable();
             string SqlDataSource = _configuration.GetConnectionString("mathebe");
 
