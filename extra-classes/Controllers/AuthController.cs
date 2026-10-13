@@ -16,7 +16,13 @@ namespace extra_classes.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IConfiguration _config;
-        public AuthController(IConfiguration config) { _config = config; }
+        private readonly extra_classes.Services.EmailService _email;
+
+        public AuthController(IConfiguration config, extra_classes.Services.EmailService email)
+        {
+            _config = config;
+            _email = email;
+        }
 
         private string Conn => _config.GetConnectionString("mathebe");
 
@@ -128,6 +134,90 @@ SET PasswordHash = @H, AccessActivated = 1, PaymentVerified = 1,
             return Ok(new { email = req.Email, tempPassword = temp });
         }
 
+        // ---------- Admin: record a verified document; activates the learner when all 3 are in ----------
+        [HttpPost("admin/mark_document")]
+        public async Task<IActionResult> MarkDocument([FromHeader(Name = "X-Admin-Key")] string? adminKey, [FromBody] MarkDocumentRequest req)
+        {
+            if (adminKey != _config["Admin:Key"])
+                return Unauthorized();
+
+            string? column = req.Document?.ToLower() switch
+            {
+                "payment" => "PaymentVerified",
+                "contract" => "ContractReceived",
+                "reportcard" => "ReportCardReceived",
+                _ => null
+            };
+            if (column == null)
+                return BadRequest(new { message = "Document must be payment, contract or reportcard." });
+
+            string first = "", temp = "";
+            bool allIn, alreadyActive;
+
+            using (var conn = new SqlConnection(Conn))
+            {
+                conn.Open();
+
+                using (var upd = new SqlCommand($"UPDATE ClassRegistrations SET {column} = 1 WHERE Email = @Email", conn))
+                {
+                    upd.Parameters.AddWithValue("@Email", req.Email);
+                    if (upd.ExecuteNonQuery() == 0)
+                        return NotFound(new { message = "No learner with that email." });
+                }
+
+                using (var sel = new SqlCommand(
+                    @"SELECT LearnerFirstName, PaymentVerified, ContractReceived, ReportCardReceived, AccessActivated
+                      FROM ClassRegistrations WHERE Email = @Email", conn))
+                {
+                    sel.Parameters.AddWithValue("@Email", req.Email);
+                    using var r = sel.ExecuteReader();
+                    r.Read();
+                    first = r.GetString(0);
+                    allIn = r.GetBoolean(1) && r.GetBoolean(2) && r.GetBoolean(3);
+                    alreadyActive = r.GetBoolean(4);
+                }
+
+                if (!allIn)
+                    return Ok(new { activated = false, message = "Document recorded. Still waiting for the other documents." });
+
+                if (alreadyActive)
+                    return Ok(new { activated = true, emailSent = false, message = "Learner is already activated." });
+
+                temp = Convert.ToHexString(RandomNumberGenerator.GetBytes(4));
+
+                using (var act = new SqlCommand(
+                    @"UPDATE ClassRegistrations
+                      SET PasswordHash = @H, AccessActivated = 1, MustChangePassword = 1
+                      WHERE Email = @Email", conn))
+                {
+                    act.Parameters.AddWithValue("@H", BCrypt.Net.BCrypt.HashPassword(temp));
+                    act.Parameters.AddWithValue("@Email", req.Email);
+                    act.ExecuteNonQuery();
+                }
+            }
+
+            bool sent = await SendAccessEmail(req.Email, first, temp);
+
+            // If the email fails, the temporary password is returned so you can pass it on yourself.
+            return Ok(new { activated = true, emailSent = sent, tempPassword = sent ? null : temp });
+        }
+
+        private Task<bool> SendAccessEmail(string toEmail, string firstName, string tempPassword)
+        {
+            string body =
+                $"Dear {firstName},\n\n" +
+                "Great news! We have received and verified your proof of payment, signed contract and school report card. " +
+                "Your access to Sesi Mathebe Remote Extra Classes is now active.\n\n" +
+                "Your login details:\n" +
+                $"Email: {toEmail}\n" +
+                $"Temporary password: {tempPassword}\n\n" +
+                "To log in, open our website and click the Log in button. You will be asked to choose your own password the first time you log in.\n\n" +
+                "If you have any questions, reply to this email.\n\n" +
+                "Best regards,\nThe SM Remote Extra Classes Team";
+
+            return _email.SendAsync(toEmail, "Your access to Sesi Mathebe Remote Extra Classes is active", body);
+        }
+
         private string CreateToken(int id, string email, string firstName)
         {
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
@@ -148,5 +238,6 @@ SET PasswordHash = @H, AccessActivated = 1, PaymentVerified = 1,
         public class LoginRequest { public string Email { get; set; } public string Password { get; set; } }
         public class ChangePasswordRequest { public string NewPassword { get; set; } }
         public class ApproveRequest { public string Email { get; set; } }
+        public class MarkDocumentRequest { public string Email { get; set; } public string Document { get; set; } }
     }
 }

@@ -64,6 +64,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
+builder.Services.AddSingleton<extra_classes.Services.EmailService>();
+
 var app = builder.Build();
 
 // Use CORS before MapControllers
