@@ -218,6 +218,125 @@ SET PasswordHash = @H, AccessActivated = 1, PaymentVerified = 1,
             return _email.SendAsync(toEmail, "Your access to Sesi Mathebe Remote Extra Classes is active", body);
         }
 
+        // ---------- Quiz attempts: learner saves one ----------
+        [Authorize]
+        [HttpPost("quiz_attempts")]
+        public IActionResult SaveAttempt([FromBody] SaveAttemptRequest req)
+        {
+            if (req == null || req.Total <= 0 || req.Correct < 0 || req.Correct > req.Total)
+                return BadRequest(new { success = false, message = "Invalid attempt." });
+            if (req.Details != null && req.Details.Length > 200000)
+                return BadRequest(new { success = false, message = "Attempt is too large." });
+
+            int id = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier).Value);
+            string quiz = string.IsNullOrWhiteSpace(req.Quiz) ? "Introduction to Trigonometry" : req.Quiz.Trim();
+            if (quiz.Length > 100) quiz = quiz.Substring(0, 100);
+
+            using var conn = new SqlConnection(Conn);
+            conn.Open();
+            using var cmd = new SqlCommand(
+                @"INSERT INTO QuizAttempts (LearnerId, Quiz, ScorePercent, Correct, Total, Details)
+                  VALUES (@L, @Q, @P, @C, @T, @D)", conn);
+            cmd.Parameters.AddWithValue("@L", id);
+            cmd.Parameters.AddWithValue("@Q", quiz);
+            cmd.Parameters.AddWithValue("@P", (int)Math.Floor(req.Correct * 100.0 / req.Total));
+            cmd.Parameters.AddWithValue("@C", req.Correct);
+            cmd.Parameters.AddWithValue("@T", req.Total);
+            cmd.Parameters.AddWithValue("@D", (object?)req.Details ?? DBNull.Value);
+            cmd.ExecuteNonQuery();
+
+            return Ok(new { success = true });
+        }
+
+        // ---------- Quiz attempts: learner reads their own ----------
+        [Authorize]
+        [HttpGet("quiz_attempts")]
+        public IActionResult MyAttempts()
+        {
+            int id = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier).Value);
+            return Ok(ReadAttempts(id));
+        }
+
+        // ---------- Admin: every learner's progress at a glance ----------
+        [HttpGet("admin/learner_progress")]
+        public IActionResult LearnerProgress([FromHeader(Name = "X-Admin-Key")] string? adminKey)
+        {
+            if (adminKey != _config["Admin:Key"])
+                return Unauthorized();
+
+            var list = new List<object>();
+            using var conn = new SqlConnection(Conn);
+            conn.Open();
+            using var cmd = new SqlCommand(
+                @"SELECT c.LearnerFirstName, c.LearnerSurname, c.Grade, c.Email,
+                         COUNT(a.Id), MAX(a.ScorePercent), MAX(a.TakenAt),
+                         (SELECT TOP 1 x.ScorePercent FROM QuizAttempts x
+                          WHERE x.LearnerId = c.Id ORDER BY x.TakenAt DESC)
+                  FROM ClassRegistrations c
+                  JOIN QuizAttempts a ON a.LearnerId = c.Id
+                  GROUP BY c.Id, c.LearnerFirstName, c.LearnerSurname, c.Grade, c.Email
+                  ORDER BY MAX(a.TakenAt) DESC", conn);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(new
+                {
+                    firstName = r.GetString(0),
+                    surname = r.GetString(1),
+                    grade = r.GetString(2),
+                    email = r.GetString(3),
+                    attempts = r.GetInt32(4),
+                    best = r.GetInt32(5),
+                    lastDate = DateTime.SpecifyKind(r.GetDateTime(6), DateTimeKind.Utc),
+                    latest = r.GetInt32(7)
+                });
+            return Ok(list);
+        }
+
+        // ---------- Admin: one learner's attempts (with wrong answers) ----------
+        [HttpGet("admin/learner_attempts")]
+        public IActionResult LearnerAttempts([FromHeader(Name = "X-Admin-Key")] string? adminKey, [FromQuery] string email)
+        {
+            if (adminKey != _config["Admin:Key"])
+                return Unauthorized();
+
+            int id = 0;
+            using (var conn = new SqlConnection(Conn))
+            {
+                conn.Open();
+                using var cmd = new SqlCommand("SELECT Id FROM ClassRegistrations WHERE Email = @Email", conn);
+                cmd.Parameters.AddWithValue("@Email", (email ?? "").Trim());
+                var o = cmd.ExecuteScalar();
+                if (o != null) id = Convert.ToInt32(o);
+            }
+            if (id == 0) return NotFound(new { message = "No learner with that email." });
+            return Ok(ReadAttempts(id));
+        }
+
+        // Last 20 attempts, oldest first (so the last one is the latest)
+        private List<object> ReadAttempts(int learnerId)
+        {
+            var list = new List<object>();
+            using var conn = new SqlConnection(Conn);
+            conn.Open();
+            using var cmd = new SqlCommand(
+                @"SELECT TOP 20 Quiz, ScorePercent, Correct, Total, TakenAt, Details
+                  FROM QuizAttempts WHERE LearnerId = @Id ORDER BY TakenAt DESC", conn);
+            cmd.Parameters.AddWithValue("@Id", learnerId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(new
+                {
+                    quiz = r.GetString(0),
+                    percent = r.GetInt32(1),
+                    correct = r.GetInt32(2),
+                    total = r.GetInt32(3),
+                    date = DateTime.SpecifyKind(r.GetDateTime(4), DateTimeKind.Utc),
+                    details = r.IsDBNull(5) ? null : r.GetString(5)
+                });
+            list.Reverse();
+            return list;
+        }
+
         private string CreateToken(int id, string email, string firstName)
         {
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
@@ -239,5 +358,6 @@ SET PasswordHash = @H, AccessActivated = 1, PaymentVerified = 1,
         public class ChangePasswordRequest { public string NewPassword { get; set; } }
         public class ApproveRequest { public string Email { get; set; } }
         public class MarkDocumentRequest { public string Email { get; set; } public string Document { get; set; } }
+        public class SaveAttemptRequest { public string? Quiz { get; set; } public int Correct { get; set; } public int Total { get; set; } public string? Details { get; set; } }
     }
 }
