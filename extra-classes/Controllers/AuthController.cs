@@ -337,6 +337,107 @@ SET PasswordHash = @H, AccessActivated = 1, PaymentVerified = 1,
             return list;
         }
 
+        // ---------- Leaderboard: how a learner compares with everyone ----------
+        private static readonly (string Id, string Name, string Pattern)[] BoardTopics =
+        {
+            ("parts",   "Parts of a triangle",          "parts of a"),
+            ("types",   "Types of triangles",           "types"),
+            ("rules",   "Rules of a triangle",          "rules"),
+            ("compare", "Comparing triangles",          "compar|congru|similar"),
+            ("trig",    "Introduction to trigonometry", "trigonometry")
+        };
+
+        private static void Keep(Dictionary<string, int> d, string key, int value)
+        {
+            if (!d.TryGetValue(key, out var old) || value > old) d[key] = value;
+        }
+
+        [Authorize]
+        [HttpGet("leaderboard")]
+        public IActionResult Leaderboard()
+        {
+            int me = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier).Value);
+            var names = new Dictionary<int, string>();
+            var best = new Dictionary<int, Dictionary<string, int>>(); // learner -> topic -> best %
+
+            using var conn = new SqlConnection(Conn);
+            conn.Open();
+
+            using (var cmd = new SqlCommand(
+                "SELECT Id, LearnerFirstName, LearnerSurname FROM ClassRegistrations WHERE AccessActivated = 1", conn))
+            using (var r = cmd.ExecuteReader())
+                while (r.Read())
+                {
+                    string sn = r.GetString(2);
+                    // Other learners see "Thabo M." only. For full anonymity use: "Learner"
+                    names[r.GetInt32(0)] = r.GetString(1) + (sn.Length > 0 ? " " + char.ToUpper(sn[0]) + "." : "");
+                }
+
+            using (var cmd = new SqlCommand("SELECT LearnerId, ScorePercent, Details, Quiz FROM QuizAttempts", conn)) using (var r = cmd.ExecuteReader())
+                while (r.Read())
+                {
+                    int lid = r.GetInt32(0);
+                    if (!names.ContainsKey(lid)) continue;
+                    if (!best.ContainsKey(lid)) best[lid] = new Dictionary<string, int>();
+                    var d = best[lid];
+                    if (r.GetString(3) == "Introduction to Trigonometry") Keep(d, "overall", r.GetInt32(1)); if (r.IsDBNull(2)) continue;
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(r.GetString(2));
+                        if (!doc.RootElement.TryGetProperty("byPart", out var parts)) continue;
+                        foreach (var p in parts.EnumerateArray())
+                        {
+                            string pn = p.GetProperty("name").GetString() ?? "";
+                            int total = p.GetProperty("total").GetInt32();
+                            if (total <= 0) continue;
+                            int pct = (int)Math.Round(p.GetProperty("correct").GetInt32() * 100.0 / total);
+                            foreach (var t in BoardTopics)
+                                if (System.Text.RegularExpressions.Regex.IsMatch(pn, t.Pattern,
+                                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                                { Keep(d, t.Id, pct); break; }
+                        }
+                    }
+                    catch { }
+                }
+
+            object Build(string id, string name)
+            {
+                var rows = best
+                    .Where(kv => kv.Value.ContainsKey(id))
+                    .Select(kv => new { Id = kv.Key, Score = kv.Value[id] })
+                    .OrderByDescending(x => x.Score).ThenBy(x => x.Id).ToList();
+                int n = rows.Count;
+                int RankOf(int s) => rows.Count(x => x.Score > s) + 1;
+
+                var board = rows.Take(5)
+                    .Select(x => new { rank = RankOf(x.Score), name = names[x.Id], score = x.Score, isMe = x.Id == me })
+                    .ToList();
+                var mine = rows.FirstOrDefault(x => x.Id == me);
+                if (mine != null && !board.Any(b => b.isMe))
+                    board.Add(new { rank = RankOf(mine.Score), name = names[mine.Id], score = mine.Score, isMe = true });
+
+                int beaten = mine == null ? 0 : rows.Count(x => x.Score < mine.Score);
+                return new
+                {
+                    id,
+                    name,
+                    participants = n,
+                    average = n == 0 ? 0 : (int)Math.Round(rows.Average(x => x.Score)),
+                    top = n == 0 ? 0 : rows[0].Score,
+                    myScore = mine == null ? (int?)null : mine.Score,
+                    rank = mine == null ? (int?)null : RankOf(mine.Score),
+                    beatPercent = mine != null && n > 1 ? (int)Math.Round(beaten * 100.0 / (n - 1)) : (int?)null,
+                    board
+                };
+            }
+
+            return Ok(new
+            {
+                overall = Build("overall", "Overall"),
+                topics = BoardTopics.Select(t => Build(t.Id, t.Name)).ToList()
+            });
+        }
+
         private string CreateToken(int id, string email, string firstName)
         {
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
