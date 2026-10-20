@@ -257,8 +257,92 @@ SET PasswordHash = @H, AccessActivated = 1, PaymentVerified = 1,
             return Ok(ReadAttempts(id));
         }
 
-        // ---------- Admin: every learner's progress at a glance ----------
-        [HttpGet("admin/learner_progress")]
+        // ---------- Quiz progress: learner saves answered questions (works for unfinished quizzes) ----------
+        private static readonly string[] ProgressQuizzes = { "all", "patterns", "measurement", "algebra" };
+
+        [Authorize]
+        [HttpPost("quiz_progress")]
+        public IActionResult SaveProgress([FromBody] SaveProgressRequest req)
+        {
+            if (req?.Items == null || req.Items.Count == 0)
+                return Ok(new { success = true });
+            if (req.Items.Count > 500)
+                return BadRequest(new { success = false, message = "Too many items." });
+
+            int id = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier).Value);
+
+            using var conn = new SqlConnection(Conn);
+            conn.Open();
+            using var tx = conn.BeginTransaction();
+
+            foreach (var it in req.Items)
+            {
+                string quiz = (it.Quiz ?? "").Trim().ToLower();
+                string key = it.Key ?? "";
+                if (!ProgressQuizzes.Contains(quiz) || key.Length == 0 || key.Length > 4000 || it.Total <= 0)
+                    continue;   // skip anything invalid
+
+                string topic = (it.Topic ?? "").Trim();
+                if (topic.Length > 255) topic = topic.Substring(0, 255);
+
+                string totals = System.Text.Json.JsonSerializer.Serialize(it.Totals ?? new Dictionary<string, int>());
+                if (totals.Length > 20000) continue;
+
+                string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
+
+                using var cmd = new SqlCommand(
+                    @"MERGE QuizProgress WITH (HOLDLOCK) AS t
+                      USING (SELECT @L AS LearnerId, @Q AS Quiz, @H AS KeyHash) AS s
+                        ON t.LearnerId = s.LearnerId AND t.Quiz = s.Quiz AND t.KeyHash = s.KeyHash
+                      WHEN MATCHED THEN
+                        UPDATE SET Topic = @Topic, Ok = @Ok, Total = @T, Totals = @Totals, UpdatedAt = SYSUTCDATETIME()
+                      WHEN NOT MATCHED THEN
+                        INSERT (LearnerId, Quiz, KeyHash, QuestionKey, Topic, Ok, Total, Totals)
+                        VALUES (@L, @Q, @H, @Key, @Topic, @Ok, @T, @Totals);", conn, tx);
+                cmd.Parameters.AddWithValue("@L", id);
+                cmd.Parameters.AddWithValue("@Q", quiz);
+                cmd.Parameters.AddWithValue("@H", hash);
+                cmd.Parameters.AddWithValue("@Key", key);
+                cmd.Parameters.AddWithValue("@Topic", topic);
+                cmd.Parameters.AddWithValue("@Ok", it.Ok);
+                cmd.Parameters.AddWithValue("@T", it.Total);
+                cmd.Parameters.AddWithValue("@Totals", totals);
+                cmd.ExecuteNonQuery();
+            }
+
+            tx.Commit();
+            return Ok(new { success = true });
+        }
+
+        // ---------- Quiz progress: learner reads their own ----------
+        [Authorize]
+        [HttpGet("quiz_progress")]
+        public IActionResult MyProgress()
+        {
+            int id = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier).Value);
+            var list = new List<object>();
+
+            using var conn = new SqlConnection(Conn);
+            conn.Open();
+            using var cmd = new SqlCommand(
+                @"SELECT Quiz, QuestionKey, Topic, Ok, Total, Totals
+                  FROM QuizProgress WHERE LearnerId = @Id ORDER BY UpdatedAt", conn);
+            cmd.Parameters.AddWithValue("@Id", id);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(new
+                {
+                    quiz = r.GetString(0),
+                    key = r.GetString(1),
+                    topic = r.GetString(2),
+                    ok = r.GetBoolean(3),
+                    total = r.GetInt32(4),
+                    totals = r.GetString(5)
+                });
+            return Ok(list);
+        }
+
+        // ---------- Admin: every learner's progress at a glance ----------        [HttpGet("admin/learner_progress")]
         public IActionResult LearnerProgress([FromHeader(Name = "X-Admin-Key")] string? adminKey)
         {
             if (adminKey != _config["Admin:Key"])
@@ -459,6 +543,8 @@ SET PasswordHash = @H, AccessActivated = 1, PaymentVerified = 1,
         public class ChangePasswordRequest { public string NewPassword { get; set; } }
         public class ApproveRequest { public string Email { get; set; } }
         public class MarkDocumentRequest { public string Email { get; set; } public string Document { get; set; } }
+        public class ProgressItem { public string? Quiz { get; set; } public string? Key { get; set; } public string? Topic { get; set; } public bool Ok { get; set; } public int Total { get; set; } public Dictionary<string, int>? Totals { get; set; } }
+        public class SaveProgressRequest { public List<ProgressItem>? Items { get; set; } }
         public class SaveAttemptRequest { public string? Quiz { get; set; } public int Correct { get; set; } public int Total { get; set; } public string? Details { get; set; } }
     }
 }
