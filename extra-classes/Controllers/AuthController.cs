@@ -30,6 +30,12 @@ namespace extra_classes.Controllers
         [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequest req)
         {
+            try { return LoginCore(req); }
+            catch (Exception ex) { return StatusCode(500, new { success = false, message = ex.Message }); }
+        }
+
+        private IActionResult LoginCore(LoginRequest req)
+        {
             if (req == null || string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
                 return BadRequest(new { success = false, message = "Email and password are required." });
 
@@ -342,7 +348,8 @@ SET PasswordHash = @H, AccessActivated = 1, PaymentVerified = 1,
             return Ok(list);
         }
 
-        // ---------- Admin: every learner's progress at a glance ----------        [HttpGet("admin/learner_progress")]
+        // ---------- Admin: every learner's progress at a glance ----------        
+        [HttpGet("admin/learner_progress")]
         public IActionResult LearnerProgress([FromHeader(Name = "X-Admin-Key")] string? adminKey)
         {
             if (adminKey != _config["Admin:Key"])
